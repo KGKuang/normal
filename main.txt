@@ -1,0 +1,49 @@
+---
+- name: 主程序 - 循环调用不同的角色并记录日志
+  hosts: all
+  gather_facts: yes
+  
+  vars:
+    log_file: "/var/log/ansible_execution.log"
+    roles_to_execute:
+      - { name: role1, params: { param1: value1, param2: value2 }, tags: ['tag1', 'tag2'] }
+      - { name: role2, params: { param1: value3 }, tags: ['tag3'] }
+      - { name: role3, params: { param1: value4, param2: value5, param3: value6 }, tags: ['tag4', 'tag5'] }
+    target_hosts: ["host1", "host2", "host3"]  # 在这里指定目标服务器
+
+  tasks:
+    - name: 创建日志文件
+      file:
+        path: "{{ log_file }}"
+        state: touch
+      delegate_to: localhost
+
+    - name: 循环执行角色
+      include_role:
+        name: "{{ item.0.name }}"
+        apply:
+          tags: "{{ item.0.tags | default([]) }}"
+      vars: "{{ item.0.params }}"
+      loop: "{{ roles_to_execute | product(target_hosts) | list }}"
+      loop_control:
+        loop_var: item
+      register: role_execution
+      delegate_to: "{{ item.1 }}"
+      tags: always
+
+    - name: 记录执行结果到日志文件
+      lineinfile:
+        path: "{{ log_file }}"
+        line: "{{ ansible_date_time.iso8601 }} - 角色 {{ item.item.0.name }} (标签: {{ item.item.0.tags | join(', ') }}) 在 {{ item.item.1 }} 上执行 {{ 'success' if item.failed == false else 'failed' }}"
+      loop: "{{ role_execution.results }}"
+      delegate_to: localhost
+      tags: always
+
+    - name: 显示执行完成消息
+      debug:
+        msg: "所有角色执行完成，日志已保存到 {{ log_file }}"
+      delegate_to: localhost
+      tags: always
+
+  tags:
+    - always

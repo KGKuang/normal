@@ -1,0 +1,57 @@
+---
+- name: 修改 /opt/IBM/wlp/abc.xml 文件
+  vars:
+    file_path: "/opt/IBM/wlp/abc.xml"
+    backup_path: "/opt/IBM/wlp/abc.xml.bak"
+
+  tasks:
+    - name: 检查文件是否存在
+      stat:
+        path: "{{ file_path }}"
+      register: file_stat
+
+    - name: 备份原始文件
+      copy:
+        src: "{{ file_path }}"
+        dest: "{{ backup_path }}"
+        remote_src: yes
+      when: file_stat.stat.exists
+
+    - name: 删除包含 ssl1.0 的行
+      lineinfile:
+        path: "{{ file_path }}"
+        regexp: ".*ssl1.0.*"
+        state: absent
+      register: ssl_removal
+
+    - name: 修改 Java 文件路径
+      replace:
+        path: "{{ file_path }}"
+        regexp: '/appvol/abc\.java'
+        replace: '/var/tmp/abc.java'
+      register: path_modification
+
+    - name: 显示修改结果
+      debug:
+        msg: 
+          - "删除 ssl1.0 行: {{ '成功' if ssl_removal.changed else '文件中不包含 ssl1.0，无需修改' }}"
+          - "修改 Java 文件路径: {{ '成功' if path_modification.changed else '文件中不包含旧路径，无需修改' }}"
+
+    - name: 还原备份文件
+      copy:
+        src: "{{ backup_path }}"
+        dest: "{{ file_path }}"
+        remote_src: yes
+      when: file_stat.stat.exists
+      register: restore_result
+      tags:
+        - never
+        - restore
+
+    - name: 显示还原备份文件的结果
+      debug:
+        msg: "还原备份文件: {{ '成功' if restore_result.changed else '未执行还原操作' }}"
+      when: restore_result is defined
+      tags:
+        - never
+        - restore
